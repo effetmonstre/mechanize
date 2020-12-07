@@ -2,6 +2,7 @@ require 'tempfile'
 require 'net/ntlm'
 require 'kconv'
 require 'webrobots'
+require 'brotli'
 
 ##
 # An HTTP (and local disk access) user agent.  This class is an implementation
@@ -468,6 +469,20 @@ class Mechanize::HTTP::Agent
     body_io.close unless body_io.closed?
   end
 
+  def content_encoding_br body_io
+    log.debug('br inflate response') if log
+
+    io_output = StringIO.new
+    decompressed = ::Brotli.inflate(body_io.string)
+    io_output.write decompressed
+    io_output
+  rescue StandardError => e
+    log.error "unable to br (brotli) inflate response: #{e} (#{e.class})" if log
+    raise
+  ensure
+    body_io.close unless body_io.closed?
+  end
+
   ##
   # Decodes a deflate-encoded +body_io+.  If it cannot be decoded, raw inflate
   # is tried followed by raising an error.
@@ -828,6 +843,8 @@ class Mechanize::HTTP::Agent
                content_encoding_inflate body_io
              when 'gzip', 'x-gzip' then
                content_encoding_gunzip body_io
+             when 'br'
+               content_encoding_br body_io
              else
                raise Mechanize::Error,
                  "unsupported content-encoding: #{response['Content-Encoding']}"
